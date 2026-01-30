@@ -136,4 +136,4 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-export type ViewState = 'FOOD' | 'CALENDAR' | 'HEALTH_MANAGEMENT' | 'WORKOUT';
+export type ViewState = 'DASHBOARD' | 'FOOD' | 'CALENDAR' | 'HEALTH_MANAGEMENT' | 'WORKOUT';

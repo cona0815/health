@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Utensils, BarChart3, UserCog, Activity, Dumbbell, Loader2, LogOut, Database, User, Key } from 'lucide-react';
+import { Utensils, BarChart3, UserCog, Activity, Dumbbell, Loader2, LogOut, Database, User, Key, LayoutDashboard } from 'lucide-react';
 import FoodAnalyzer from './components/FoodAnalyzer';
 import CalendarStats from './components/CalendarStats';
 import AnalysisResultCard from './components/AnalysisResultCard';
 import HealthManagement from './components/HealthManagement';
 import WorkoutPlanner from './components/WorkoutPlanner';
+import Dashboard from './components/Dashboard';
 import GasSetup from './components/GasSetup';
 import ApiKeySetup from './components/ApiKeySetup'; // New component
 import { HealthReport, FoodAnalysis, ViewState, UserProfile, WorkoutLog, SavedAppointment, WorkoutPlanDay, Recipe } from './types';
@@ -14,7 +15,7 @@ import { getGeminiKey, clearGeminiKey } from './services/geminiService';
 const App: React.FC = () => {
   const [hasApiKey, setHasApiKey] = useState<boolean>(!!getGeminiKey());
   const [hasConnection, setHasConnection] = useState<boolean>(!!getGasUrl());
-  const [activeTab, setActiveTab] = useState<ViewState>('FOOD');
+  const [activeTab, setActiveTab] = useState<ViewState>('DASHBOARD');
   const [dataLoading, setDataLoading] = useState(false);
   
   const [healthReports, setHealthReports] = useState<HealthReport[]>([]);
@@ -84,6 +85,11 @@ const App: React.FC = () => {
     dbService.saveAppointment(appointment);
   };
 
+  const handleDeleteAppointment = (id: string) => {
+    setAppointments(prev => prev.filter(a => a.id !== id));
+    dbService.deleteAppointment(id);
+  };
+
   const handleSaveWorkoutPlan = (plan: WorkoutPlanDay[]) => {
     setCurrentWorkoutPlan(plan);
     dbService.saveWorkoutPlan(plan);
@@ -120,6 +126,17 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'DASHBOARD':
+        return (
+          <Dashboard 
+            userProfile={userProfile}
+            foodLogs={foodLogs}
+            appointments={appointments}
+            workoutPlan={currentWorkoutPlan}
+            workoutLogs={workoutLogs}
+            onNavigate={setActiveTab}
+          />
+        );
       case 'FOOD':
         return (
           <div className="space-y-6 md:space-y-8 animate-fade-in">
@@ -131,6 +148,10 @@ const App: React.FC = () => {
               savedRecipes={savedRecipes}
               onSaveRecipe={handleSaveRecipe}
               onDeleteRecipe={handleDeleteRecipe}
+              // New Props for Dashboard
+              foodLogs={foodLogs}
+              appointments={appointments}
+              workoutPlan={currentWorkoutPlan}
             />
             {foodLogs.length > 0 && (
               <div>
@@ -166,6 +187,7 @@ const App: React.FC = () => {
              onReportAnalyzed={handleReportAnalyzed}
              appointments={appointments}
              onSaveAppointment={handleSaveAppointment}
+             onDeleteAppointment={handleDeleteAppointment}
           />
         );
       default:
@@ -219,7 +241,7 @@ const App: React.FC = () => {
     <div className="min-h-[100dvh] bg-gray-50 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-20 shadow-sm transition-all">
         <div className="max-w-4xl mx-auto px-4 h-14 md:h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab('DASHBOARD')}>
             <div className="bg-gradient-to-br from-teal-500 to-blue-600 text-white p-1.5 rounded-lg shadow-sm">
                 <Activity className="w-5 h-5 md:w-6 md:h-6" />
             </div>
@@ -261,16 +283,18 @@ const App: React.FC = () => {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-gray-200 md:hidden z-30 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-        <div className="grid grid-cols-4 h-16">
-          <NavButton id="FOOD" label="飲食/購物" icon={Utensils} />
+        <div className="grid grid-cols-5 h-16">
+          <NavButton id="DASHBOARD" label="首頁" icon={LayoutDashboard} />
+          <NavButton id="FOOD" label="飲食" icon={Utensils} />
           <NavButton id="CALENDAR" label="統計" icon={BarChart3} />
-          <NavButton id="WORKOUT" label="運動建議" icon={Dumbbell} />
-          <NavButton id="HEALTH_MANAGEMENT" label="健康管理" icon={UserCog} />
+          <NavButton id="WORKOUT" label="運動" icon={Dumbbell} />
+          <NavButton id="HEALTH_MANAGEMENT" label="健康" icon={UserCog} />
         </div>
       </nav>
 
       <div className="hidden md:block fixed top-24 left-[max(2rem,calc(50%-48rem))] w-56 space-y-2">
         <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Menu</p>
+        <DesktopNavButton id="DASHBOARD" label="總覽儀表板" icon={LayoutDashboard} colorClass="bg-gray-100 text-gray-900" />
         <DesktopNavButton id="FOOD" label="飲食分析與購物" icon={Utensils} colorClass="bg-teal-50 text-teal-700" />
         <DesktopNavButton id="CALENDAR" label="日曆統計" icon={BarChart3} colorClass="bg-indigo-50 text-indigo-700" />
         <DesktopNavButton id="WORKOUT" label="運動建議" icon={Dumbbell} colorClass="bg-orange-50 text-orange-700" />

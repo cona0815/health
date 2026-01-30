@@ -25,13 +25,11 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, isSavedView = false, is
   const [localNote, setLocalNote] = useState(recipe.notes || '');
 
   const handleFavoriteClick = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault(); // 防止事件冒泡造成的副作用
+      e.stopPropagation(); // 防止觸發卡片展開
       
       if (isSaved) {
-          if (confirm(`確定要將「${recipe.name}」從我的食譜中移除嗎？`)) {
-              onDelete(recipe.id);
-          }
+          // 直接刪除，不需確認，操作更流暢
+          onDelete(recipe.id);
       } else {
           onSave({ ...recipe, notes: localNote });
       }
@@ -77,8 +75,8 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, isSavedView = false, is
                 </h4>
                 <button 
                     onClick={handleFavoriteClick}
-                    className="p-2 -mr-2 transition-transform active:scale-90"
-                    title={isSaved ? "取消收藏 (移除)" : "加入最愛"}
+                    className="p-2 -mr-2 transition-transform active:scale-95 hover:bg-gray-50 rounded-full"
+                    title={isSaved ? "取消收藏" : "加入最愛"}
                 >
                     <Heart className={`w-6 h-6 transition-colors ${isSaved ? "fill-red-500 text-red-500" : "text-gray-300 hover:text-red-400"}`} />
                 </button>
@@ -232,12 +230,14 @@ const GroceryAssistant: React.FC<Props> = ({ userProfile, healthReport, savedRec
                        <button onClick={handleGenRecipes} className="text-xs text-emerald-600 font-bold hover:underline">換一批</button>
                    </div>
                    {recipes.map((recipe) => {
+                       // Check if this recommended recipe is already saved by name
                        const savedVersion = savedRecipes.find(r => r.name === recipe.name);
                        const isSaved = !!savedVersion;
                        
                        return (
                            <RecipeCard 
                               key={recipe.id} 
+                              // If saved, use the saved version (which has the correct ID for deletion)
                               recipe={savedVersion || recipe} 
                               isExpanded={expandedRecipeId === recipe.id}
                               onToggle={toggleExpand}

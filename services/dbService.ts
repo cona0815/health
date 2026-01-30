@@ -11,19 +11,28 @@ export const setGasUrl = (url: string) => localStorage.setItem(GAS_URL_KEY, url)
 export const clearGasUrl = () => localStorage.removeItem(GAS_URL_KEY);
 
 // 帶有 Timeout 的 Fetch
-const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 15000) => {
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 30000) => {
   const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
+  const id = setTimeout(() => {
+    // 嘗試傳遞原因，若瀏覽器不支援則忽略
+    try { controller.abort(new Error("Timeout")); } catch(e) { controller.abort(); }
+  }, timeout);
+  
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
     return response;
+  } catch (error: any) {
+    // 捕捉超時錯誤並提供清楚的訊息
+    if (error.name === 'AbortError' || error.message === 'Timeout' || error.message?.includes('aborted')) {
+        throw new Error(`連線逾時 (${timeout / 1000}秒)。可能因 Google Sheets 正在喚醒中，請再次點擊按鈕重試。`);
+    }
+    throw error;
   } finally {
     clearTimeout(id);
   }
 };
 
 // 呼叫 GAS 的通用函式
-// 使用 text/plain 避免觸發 CORS Preflight (OPTIONS)，雖然 GAS 現在支援較好，但這樣最穩
 const callGasApi = async (data: any) => {
   const url = getGasUrl();
   if (!url) throw new Error("API URL not set");
@@ -32,14 +41,11 @@ const callGasApi = async (data: any) => {
     const response = await fetchWithTimeout(url, {
       method: 'POST',
       body: JSON.stringify(data),
-      // 關鍵：不使用 application/json header 以避免複雜的 CORS 檢查
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
     });
     
-    // 檢查 Content-Type
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.indexOf("application/json") === -1) {
-       // 如果回傳的不是 JSON (例如回傳了 HTML 的 Google 登入頁面)，代表權限錯誤
        throw new Error("Invalid response format. Likely permission error.");
     }
 
@@ -51,46 +57,107 @@ const callGasApi = async (data: any) => {
   }
 };
 
+// --- 資料消毒工具 (Data Sanitizers) ---
+// 防止因為 Sheet 欄位空白導致讀成字串，進而讓前端 Crash
+const ensureArray = (item: any): any[] => {
+    if (Array.isArray(item)) return item;
+    // 如果是 JSON 字串嘗試解析
+    if (typeof item === 'string' && (item.startsWith('[') || item.startsWith('{'))) {
+        try { return JSON.parse(item); } catch (e) { return []; }
+    }
+    return [];
+};
+
 export const dbService = {
   // --- Check Connection ---
   testConnection: async (url: string) => {
+    // 直接拋出錯誤讓 UI 處理，而不是吞掉回傳 false
     try {
         const response = await fetchWithTimeout(url, {
             method: 'POST',
             body: JSON.stringify({ action: "read_all" }),
             headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-        }, 10000); // 測試連線 10秒逾時
+        }, 25000); // 測試連線給予 25 秒
         
         const text = await response.text();
-        
-        // 嘗試解析 JSON
         try {
             const json = JSON.parse(text);
-            // 確保回傳的是物件且不是 Google 的錯誤訊息
             return json && typeof json === 'object';
         } catch (e) {
-            // 解析失敗 (可能是 HTML)
             console.error("Connection test failed: Response is not JSON", text.substring(0, 100));
-            return false;
+            throw new Error("回傳格式錯誤 (非 JSON)，請確認網址是否為 Google Apps Script 部署網址");
         }
-    } catch (e) {
+    } catch (e: any) {
         console.error("Connection test network error", e);
-        return false;
+        throw e; // 讓 UI 顯示錯誤
     }
   },
 
   // --- Load All Data ---
   loadAllData: async () => {
     const data = await callGasApi({ action: "read_all" });
-    // 如果是第一次使用，GAS 回傳的可能是空陣列，需做防呆
+    
+    // 解析 WorkoutPlan: 後端儲存為 { timestamp, planJson } 的陣列
+    let currentPlan: WorkoutPlanDay[] = [];
+    if (data.workoutPlan && Array.isArray(data.workoutPlan) && data.workoutPlan.length > 0) {
+        // 找到最後一筆
+        const lastEntry = data.workoutPlan[data.workoutPlan.length - 1];
+        if (lastEntry && lastEntry.planJson) {
+            try {
+                // Ensure planJson is a string before parsing
+                const jsonStr = typeof lastEntry.planJson === 'string' ? lastEntry.planJson : JSON.stringify(lastEntry.planJson);
+                const parsed = JSON.parse(jsonStr);
+                if (Array.isArray(parsed)) {
+                    currentPlan = parsed;
+                }
+            } catch (e) {
+                console.error("Failed to parse workout plan JSON", e);
+            }
+        }
+    }
+
+    // --- 消毒資料防止崩潰 ---
+    
+    const rawFoodLogs = Array.isArray(data.foodLogs) ? data.foodLogs : [];
+    const foodLogs = rawFoodLogs.map((log: any) => ({
+        ...log,
+        // 確保關鍵陣列欄位真的是陣列，若是空字串則轉為 []
+        nutrients: ensureArray(log.nutrients),
+        ingredients: ensureArray(log.ingredients),
+        calories: Number(log.calories) || 0 // 確保熱量是數字
+    }));
+
+    const rawWorkouts = Array.isArray(data.workouts) ? data.workouts : [];
+    const workouts = rawWorkouts.map((w: any) => ({
+        ...w,
+        // 確保 timestamp 存在且為字串，防止 startsWith 崩潰
+        timestamp: w.timestamp ? String(w.timestamp) : ''
+    }));
+
+    const rawReports = Array.isArray(data.reports) ? data.reports : [];
+    const reports = rawReports.map((r: any) => ({
+        ...r,
+        metrics: ensureArray(r.metrics),
+        dietaryRestrictions: ensureArray(r.dietaryRestrictions)
+    }));
+    
+    const rawRecipes = Array.isArray(data.recipes) ? data.recipes : [];
+    const recipes = rawRecipes.map((r: any) => ({
+        ...r,
+        tags: ensureArray(r.tags),
+        ingredients: ensureArray(r.ingredients),
+        steps: ensureArray(r.steps),
+        checkedIngredients: ensureArray(r.checkedIngredients)
+    }));
+
     return {
-      foodLogs: Array.isArray(data.foodLogs) ? data.foodLogs : [],
-      reports: Array.isArray(data.reports) ? data.reports : [],
-      workouts: Array.isArray(data.workouts) ? data.workouts : [],
+      foodLogs,
+      reports,
+      workouts,
       profile: data.profile || { name: '', height: '', weight: '' },
       appointments: Array.isArray(data.appointments) ? data.appointments : [], 
-      workoutPlan: Array.isArray(data.workoutPlan) ? data.workoutPlan : [],
-      recipes: Array.isArray(data.recipes) ? data.recipes : []
+      workoutPlan: currentPlan,
+      recipes
     };
   },
 
@@ -104,7 +171,6 @@ export const dbService = {
   },
 
   updateFoodLog: async (timestamp: string, updatedLog: FoodAnalysis) => {
-    // GAS 端實作了 update 邏輯 (基於 timestamp)
     await callGasApi({ action: "save", type: "FoodLogs", data: updatedLog });
   },
 
@@ -120,8 +186,16 @@ export const dbService = {
     await callGasApi({ action: "save", type: "Appointments", data: appointment });
   },
 
+  deleteAppointment: async (id: string) => {
+    await callGasApi({ action: "delete", type: "Appointments", id: id });
+  },
+
   saveWorkoutPlan: async (plan: WorkoutPlanDay[]) => {
-    await callGasApi({ action: "save", type: "WorkoutPlan", data: plan });
+    const payload = {
+        timestamp: new Date().toISOString(),
+        planJson: JSON.stringify(plan)
+    };
+    await callGasApi({ action: "save", type: "WorkoutPlan", data: payload });
   },
 
   saveRecipe: async (recipe: Recipe) => {
@@ -129,7 +203,6 @@ export const dbService = {
   },
 
   deleteRecipe: async (id: string) => {
-    // 使用 action: 'delete'，需確認 GAS 端有對應實作，若無則依賴前端狀態更新即可
     await callGasApi({ action: "delete", type: "Recipes", id: id });
   },
 };

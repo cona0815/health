@@ -254,14 +254,20 @@ export const analyzeMedication = async (imageBase64: string, mimeType: string, h
 };
 
 export const generateWorkoutPlan = async (userProfile: UserProfile, healthContext?: HealthReport): Promise<WorkoutPlanDay[]> => {
+  // 取得今天的星期與日期
+  const today = new Date();
+  const dateString = today.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+  
   const prompt = `
-  您是專業的運動健康教練。請為使用者設計一週運動處方 (JSON Array)。
+  您是專業的運動健康教練。今天是 **${dateString}**。
+  請為使用者設計一份「未來 7 天」的運動處方 (JSON Array)。
   
   【嚴格規則】
-  1. **所有內容必須完全使用「繁體中文」(Traditional Chinese)**，禁止使用簡體中文或英文。
+  1. **起點為今天**，依次規劃 7 天的行程 (例如：今天是週五，則順序為 週五, 週六, 週日...到下週四)。
   2. 針對使用者 BMI 與健康狀況調整強度。
-  
-  JSON 結構: [{day: "週一", activity: "快走", duration: "30分鐘", intensity: "中等", notes: "注意心率..."}]`;
+  3. JSON 結構: [{day: "週五 (10/25)", activity: "快走", duration: "30分鐘", intensity: "中等", notes: "注意心率..."}]
+  4. 內容必須完全使用「繁體中文」。
+  `;
   
   try {
     const response = await getAI().models.generateContent({
@@ -294,16 +300,17 @@ export const generateHealthyRecipes = async (userProfile: UserProfile, healthCon
     【規則】
     1. 這些食譜必須是健康的、適合居家烹飪的。
     2. 針對健檢紅字進行改善（例如高血壓推薦低鈉、高血糖推薦低GI）。
-    3. 每道料理回傳一個物件。
+    3. **【強制要求】：請務必包含至少 3 道使用「氣炸鍋 (Air Fryer)」烹飪的料理，並在 tags 中標記「氣炸鍋」。**
+    4. 每道料理回傳一個物件。
     
     JSON 結構:
     [
       {
         "name": "料理名稱",
         "calories": 350,
-        "tags": ["低卡", "高纖", "降血壓"],
+        "tags": ["低卡", "高纖", "降血壓", "氣炸鍋"],
         "ingredients": ["雞胸肉 100g", "花椰菜 50g", "蒜末 少許"],
-        "steps": ["雞肉切塊", "水煮...", "拌入..."],
+        "steps": ["雞肉切塊", "氣炸...", "拌入..."],
         "videoKeyword": "香煎雞胸肉佐時蔬 教學",
         "reason": "富含蛋白質且低脂，適合體重控制。"
       }

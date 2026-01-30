@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
-import { Camera, Upload, Loader2, Utensils, Sparkles, ChefHat, RefreshCw, MapPin, ExternalLink, Navigation, ShoppingBag } from 'lucide-react';
+import React, { useState, useRef, useMemo } from 'react';
+import { Camera, Loader2, Utensils, Sparkles, ChefHat, RefreshCw, MapPin, ExternalLink, Navigation, ShoppingBag, Flame, Calendar, Dumbbell, ArrowRight } from 'lucide-react';
 import { analyzeFoodImage, fileToGenerativePart, generateFoodSuggestions, findNearbyRestaurants } from '../services/geminiService';
-import { FoodAnalysis, HealthReport, UserProfile, FoodSuggestion, RiskLevel, Recipe } from '../types';
+import { FoodAnalysis, HealthReport, UserProfile, FoodSuggestion, RiskLevel, Recipe, SavedAppointment, WorkoutPlanDay } from '../types';
 import AnalysisResultCard from './AnalysisResultCard';
 import GroceryAssistant from './GroceryAssistant';
 
@@ -13,9 +13,17 @@ interface Props {
   savedRecipes: Recipe[];
   onSaveRecipe: (recipe: Recipe) => void;
   onDeleteRecipe: (id: string) => void;
+  // Dashboard data props are no longer used here but kept for interface compatibility if needed, 
+  // or we can remove them. For minimal changes, I'll ignore them in render.
+  foodLogs: FoodAnalysis[];
+  appointments: SavedAppointment[];
+  workoutPlan: WorkoutPlanDay[];
 }
 
-const FoodAnalyzer: React.FC<Props> = ({ healthReport, userProfile, onAnalysisComplete, onUpdateLog, savedRecipes, onSaveRecipe, onDeleteRecipe }) => {
+const FoodAnalyzer: React.FC<Props> = ({ 
+    healthReport, userProfile, onAnalysisComplete, onUpdateLog, 
+    savedRecipes, onSaveRecipe, onDeleteRecipe
+}) => {
   const [viewMode, setViewMode] = useState<'MEAL' | 'GROCERY'>('MEAL');
   const [loading, setLoading] = useState(false);
   const [suggestionLoading, setSuggestionLoading] = useState(false);
@@ -27,6 +35,8 @@ const FoodAnalyzer: React.FC<Props> = ({ healthReport, userProfile, onAnalysisCo
   const [currentResult, setCurrentResult] = useState<FoodAnalysis | null>(null);
   const [suggestions, setSuggestions] = useState<FoodSuggestion[]>([]);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+
+  // --- Handlers ---
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -121,7 +131,7 @@ const FoodAnalyzer: React.FC<Props> = ({ healthReport, userProfile, onAnalysisCo
   };
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 animate-fade-in pb-20">
       {/* View Toggle */}
       <div className="flex p-1 bg-gray-200 rounded-xl mb-4">
         <button 
@@ -148,19 +158,6 @@ const FoodAnalyzer: React.FC<Props> = ({ healthReport, userProfile, onAnalysisCo
         />
       ) : (
         <>
-          {/* Header */}
-          <div className="bg-gradient-to-r from-teal-500 to-emerald-600 p-5 md:p-6 rounded-2xl text-white shadow-lg">
-            <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-              <Utensils className="w-5 h-5 md:w-6 md:h-6" />
-              食物成份分析
-            </h2>
-            <p className="opacity-90 mt-2 text-sm md:text-base">
-              {healthReport || (userProfile.height && userProfile.weight)
-                ? "已啟用個人化模式：將根據您的 BMI 與健檢報告分析飲食風險。" 
-                : "一般模式：請在「健康管理」設定身高體重以獲得更精準建議。"}
-            </p>
-          </div>
-
           <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-6 md:p-8 hover:bg-gray-50 transition-colors cursor-pointer active:scale-95 duration-200"
                 onClick={() => fileInputRef.current?.click()}>
