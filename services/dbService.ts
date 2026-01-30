@@ -1,4 +1,3 @@
-
 import { FoodAnalysis, HealthReport, UserProfile, WorkoutLog, SavedAppointment, WorkoutPlanDay, Recipe } from '../types';
 
 const GAS_URL_KEY = 'hg_gas_api_url';
@@ -14,17 +13,20 @@ export const clearGasUrl = () => localStorage.removeItem(GAS_URL_KEY);
 const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 30000) => {
   const controller = new AbortController();
   const id = setTimeout(() => {
-    // 嘗試傳遞原因，若瀏覽器不支援則忽略
-    try { controller.abort(new Error("Timeout")); } catch(e) { controller.abort(); }
+    controller.abort();
   }, timeout);
   
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
     return response;
   } catch (error: any) {
-    // 捕捉超時錯誤並提供清楚的訊息
-    if (error.name === 'AbortError' || error.message === 'Timeout' || error.message?.includes('aborted')) {
-        throw new Error(`連線逾時 (${timeout / 1000}秒)。可能因 Google Sheets 正在喚醒中，請再次點擊按鈕重試。`);
+    // 捕捉超時錯誤 (AbortError)
+    // "signal is aborted without reason" 是某些瀏覽器在 controller.abort() 未帶參數時的預設訊息
+    const isAbort = error.name === 'AbortError' || 
+                    (error.message && (error.message.includes('aborted') || error.message.includes('timeout') || error.message.includes('reason')));
+                    
+    if (isAbort) {
+        throw new Error(`連線回應逾時 (${timeout / 1000}秒)。Google Sheets 可能正在休眠啟動中，請耐心等候或再次點擊按鈕重試。`);
     }
     throw error;
   } finally {
@@ -82,10 +84,18 @@ export const dbService = {
         const text = await response.text();
         try {
             const json = JSON.parse(text);
-            return json && typeof json === 'object';
+            if (json && typeof json === 'object') {
+                return true;
+            } else {
+                throw new Error("Invalid JSON structure");
+            }
         } catch (e) {
             console.error("Connection test failed: Response is not JSON", text.substring(0, 100));
-            throw new Error("回傳格式錯誤 (非 JSON)，請確認網址是否為 Google Apps Script 部署網址");
+            // 嘗試給出更具體的建議
+            if (text.includes("Google Drive") || text.includes("Google Docs")) {
+                 throw new Error("回傳了 Google 登入頁面，請確認部署設定：「誰可以存取」必須設為「任何人」。");
+            }
+            throw new Error("回傳格式錯誤 (非 JSON)，請確認您複製的是「網頁應用程式網址」而非編輯器網址。");
         }
     } catch (e: any) {
         console.error("Connection test network error", e);
