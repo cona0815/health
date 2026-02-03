@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Dumbbell, PlayCircle, Activity, Loader2, CheckSquare, Plus, Clock, CheckCircle2, Edit2, Save, Video } from 'lucide-react';
-import { generateWorkoutPlan } from '../services/geminiService';
+import { Dumbbell, PlayCircle, Activity, Loader2, CheckSquare, Plus, Clock, CheckCircle2, Edit2, Save, Video, Flame, Zap } from 'lucide-react';
+import { generateWorkoutPlan, calculateExerciseCalories } from '../services/geminiService';
 import { HealthReport, UserProfile, WorkoutPlanDay, WorkoutLog } from '../types';
 
 interface Props {
@@ -15,13 +15,20 @@ interface Props {
 const COMMON_EXERCISES = [
   "快走 (Brisk Walking)", "慢跑 (Jogging)", "游泳 (Swimming)", "騎腳踏車 (Cycling)", 
   "瑜珈 (Yoga)", "皮拉提斯 (Pilates)", "HIIT 高強度間歇", "深蹲 (Squats)", 
-  "棒式 (Plank)", "太極拳 (Tai Chi)", "跳繩 (Jump Rope)"
+  "棒式 (Plank)", "太極拳 (Tai Chi)", "跳繩 (Jump Rope)", "重量訓練 (Weight Training)",
+  "登山 (Hiking)", "羽球 (Badminton)", "籃球 (Basketball)"
 ];
 
 const WorkoutPlanner: React.FC<Props> = ({ userProfile, healthReport, workoutLogs, onAddWorkout, currentPlan, onSavePlan }) => {
   const [loading, setLoading] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<WorkoutPlanDay | null>(null);
+
+  // Manual Entry State
+  const [manualActivity, setManualActivity] = useState("");
+  const [manualCustomActivity, setManualCustomActivity] = useState("");
+  const [manualDuration, setManualDuration] = useState("");
+  const [calcLoading, setCalcLoading] = useState(false);
   
   // Filter logs for today
   const todayStr = new Date().toISOString().split('T')[0];
@@ -47,6 +54,41 @@ const WorkoutPlanner: React.FC<Props> = ({ userProfile, healthReport, workoutLog
       timestamp: new Date().toISOString()
     };
     onAddWorkout(newLog);
+  };
+
+  const handleManualAdd = async () => {
+      const activity = manualActivity === "custom" ? manualCustomActivity : manualActivity;
+      
+      if (!activity || !manualDuration) {
+          alert("請選擇運動項目並輸入時間");
+          return;
+      }
+
+      setCalcLoading(true);
+      try {
+          const calories = await calculateExerciseCalories(activity, manualDuration, userProfile);
+          
+          const newLog: WorkoutLog = {
+              id: Date.now().toString(),
+              activity: activity,
+              duration: manualDuration + (manualDuration.includes("分鐘") ? "" : "分鐘"),
+              timestamp: new Date().toISOString(),
+              caloriesBurned: calories
+          };
+          
+          onAddWorkout(newLog);
+          
+          // Reset
+          setManualActivity("");
+          setManualCustomActivity("");
+          setManualDuration("");
+          alert(`已新增記錄！AI 估算消耗熱量: ${calories} kcal`);
+      } catch (e) {
+          console.error(e);
+          alert("新增失敗，請稍後再試");
+      } finally {
+          setCalcLoading(false);
+      }
   };
 
   const startEditing = (index: number, plan: WorkoutPlanDay) => {
@@ -78,6 +120,54 @@ const WorkoutPlanner: React.FC<Props> = ({ userProfile, healthReport, workoutLog
         <p className="opacity-90 mt-2 text-sm md:text-base">根據您的 BMI 與健檢紅字，量身打造安全有效的運動計畫。</p>
       </div>
 
+      {/* Manual Entry Section */}
+      <div className="bg-white p-5 rounded-xl shadow-sm border border-orange-100">
+         <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+           <Zap className="w-5 h-5 text-orange-500" /> 手動記錄運動
+         </h3>
+         <div className="flex flex-col md:flex-row gap-3">
+             <div className="flex-1">
+                 <select 
+                    value={manualActivity} 
+                    onChange={(e) => setManualActivity(e.target.value)}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-200 text-sm"
+                 >
+                     <option value="">選擇運動項目...</option>
+                     {COMMON_EXERCISES.map(ex => <option key={ex} value={ex}>{ex}</option>)}
+                     <option value="custom">自訂項目...</option>
+                 </select>
+             </div>
+             {manualActivity === "custom" && (
+                 <div className="flex-1">
+                     <input 
+                        type="text" 
+                        value={manualCustomActivity} 
+                        onChange={(e) => setManualCustomActivity(e.target.value)}
+                        placeholder="輸入運動名稱"
+                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-200 text-sm"
+                     />
+                 </div>
+             )}
+             <div className="w-full md:w-32">
+                 <input 
+                    type="number" 
+                    value={manualDuration} 
+                    onChange={(e) => setManualDuration(e.target.value)}
+                    placeholder="分鐘"
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-200 text-sm"
+                 />
+             </div>
+             <button 
+                onClick={handleManualAdd}
+                disabled={calcLoading}
+                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
+             >
+                 {calcLoading ? <Loader2 className="w-5 h-5 animate-spin"/> : <Plus className="w-5 h-5"/>}
+                 記錄
+             </button>
+         </div>
+      </div>
+
       {/* Today's Progress */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100">
          <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
@@ -87,7 +177,14 @@ const WorkoutPlanner: React.FC<Props> = ({ userProfile, healthReport, workoutLog
            <div className="space-y-2">
              {todayLogs.map(log => (
                <div key={log.id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg text-sm border border-orange-100">
-                 <span className="font-bold text-gray-800">{log.activity}</span>
+                 <div className="flex items-center gap-2">
+                     <span className="font-bold text-gray-800">{log.activity}</span>
+                     {log.caloriesBurned && (
+                         <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                             <Flame className="w-3 h-3" /> {log.caloriesBurned} kcal
+                         </span>
+                     )}
+                 </div>
                  <span className="text-orange-600 flex items-center gap-1">
                    <Clock className="w-3 h-3" /> {log.duration}
                  </span>

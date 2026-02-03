@@ -160,11 +160,19 @@ export const dbService = {
         checkedIngredients: ensureArray(r.checkedIngredients)
     }));
 
+    // Process Profile and ensure weightHistory is an array
+    let profile = data.profile || { name: '', height: '', weight: '' };
+    if (profile.weightHistory) {
+        profile.weightHistory = ensureArray(profile.weightHistory);
+    } else {
+        profile.weightHistory = [];
+    }
+
     return {
       foodLogs,
       reports,
       workouts,
-      profile: data.profile || { name: '', height: '', weight: '' },
+      profile,
       appointments: Array.isArray(data.appointments) ? data.appointments : [], 
       workoutPlan: currentPlan,
       recipes

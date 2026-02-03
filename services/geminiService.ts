@@ -279,6 +279,30 @@ export const generateWorkoutPlan = async (userProfile: UserProfile, healthContex
   } catch (error) { return []; }
 };
 
+export const calculateExerciseCalories = async (activity: string, duration: string, userProfile: UserProfile): Promise<number> => {
+    const weight = userProfile.weight || "65"; // Default 65kg if missing
+    const prompt = `
+      計算運動消耗熱量 (只回傳數字)。
+      使用者: ${weight}kg
+      運動: ${activity}
+      時間: ${duration}
+      
+      請估算這項活動大約消耗多少大卡 (kcal)。僅回傳一個整數 (Number)，不要有文字。
+    `;
+    
+    try {
+        const response = await getAI().models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+        });
+        const num = parseInt(response.text?.replace(/[^0-9]/g, '') || "0");
+        return isNaN(num) ? 0 : num;
+    } catch (error) {
+        console.error("Failed to calculate calories", error);
+        return 0;
+    }
+};
+
 export const generateHealthyRecipes = async (userProfile: UserProfile, healthContext?: HealthReport): Promise<Recipe[]> => {
   let profileContext = "";
   if (userProfile.height && userProfile.weight) {

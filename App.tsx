@@ -42,7 +42,20 @@ const App: React.FC = () => {
       setFoodLogs(data.foodLogs.reverse()); 
       setHealthReports(data.reports.reverse());
       setWorkoutLogs(data.workouts.reverse());
-      if (data.profile) setUserProfile(data.profile);
+      
+      let loadedProfile = data.profile || { name: '', height: '', weight: '' };
+      // 根據歷史紀錄自動更新當前體重
+      if (loadedProfile.weightHistory && loadedProfile.weightHistory.length > 0) {
+          // 依日期排序 (最新在最前)
+          const sortedHistory = [...loadedProfile.weightHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          const latestRecord = sortedHistory[0];
+          // 如果有最新紀錄，同步更新顯示的體重
+          if (latestRecord && latestRecord.weight) {
+             loadedProfile.weight = latestRecord.weight;
+          }
+      }
+      setUserProfile(loadedProfile);
+
       if (data.appointments) setAppointments(data.appointments.reverse());
       if (data.workoutPlan) setCurrentWorkoutPlan(data.workoutPlan);
       if (data.recipes) setSavedRecipes(data.recipes.reverse()); // Load recipes

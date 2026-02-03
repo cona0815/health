@@ -34,11 +34,10 @@ export const GAS_CODE = `function doPost(e) {
     var sheet = getOrCreateSheet(ss, para.type);
     var data = para.data;
     
-    // 特別處理 Profile，確保格式永遠正確
+    // 特別處理 Profile，使其支援動態欄位
     if (para.type === 'Profile') {
        sheet.clear(); // 清空舊資料
-       sheet.appendRow(['name', 'height', 'weight']); // 強制寫入正確表頭
-       sheet.appendRow([data.name, data.height, data.weight]); // 寫入資料
+       appendData(sheet, data); // 使用動態寫入，不限制欄位
        return ContentService.createTextOutput(JSON.stringify({status:"success"})).setMimeType(ContentService.MimeType.JSON);
     }
     
@@ -176,18 +175,7 @@ function readProfile(ss) {
   var data = sheet.getDataRange().getValues();
   if (data.length === 0) return {};
 
-  // 救援模式：如果 A1 儲存格本身就是 JSON (欄位錯亂的情況)
-  // 這可以解決使用者遇到的 "A1 是 JSON, 無法正確讀取 height" 的問題
-  var firstCell = data[0][0];
-  if (typeof firstCell === 'string' && firstCell.trim().startsWith('{')) {
-      try {
-        var parsed = JSON.parse(firstCell);
-        // 如果解析出來有 height 或 name，直接回傳這個物件
-        if (parsed.name || parsed.height) return parsed;
-      } catch(e) {}
-  }
-
-  // 正常模式
+  // 讀取最後一行資料
   var list = readSheet(ss, 'Profile');
   return list.length > 0 ? list[list.length - 1] : {};
 }`;

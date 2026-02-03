@@ -8,10 +8,16 @@ export enum RiskLevel {
 
 export type MealType = '早餐' | '午餐' | '晚餐' | '點心/飲料';
 
+export interface WeightRecord {
+  date: string;   // YYYY-MM-DD
+  weight: string; // kg
+}
+
 export interface UserProfile {
   name?: string; // 使用者暱稱
   height: string; // cm
-  weight: string; // kg
+  weight: string; // kg (目前體重)
+  weightHistory?: WeightRecord[]; // 體重歷史紀錄
 }
 
 export interface Nutrient {
@@ -102,6 +108,7 @@ export interface WorkoutLog {
   activity: string;
   duration: string;
   timestamp: string; // ISO String
+  caloriesBurned?: number; // 新增：消耗熱量
 }
 
 export interface Recipe {

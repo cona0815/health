@@ -420,7 +420,14 @@ const CalendarStats: React.FC<Props> = ({ logs, workoutLogs, appointments, onUpd
                         <div className="space-y-2">
                             {selectedWorkouts.map(w => (
                                 <div key={w.id} className="flex justify-between items-center bg-white p-3 rounded-lg border border-orange-100">
-                                    <span className="font-medium text-gray-700">{w.activity}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-medium text-gray-700">{w.activity}</span>
+                                        {w.caloriesBurned && (
+                                            <span className="text-xs font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                <Flame className="w-3 h-3"/> {w.caloriesBurned} kcal
+                                            </span>
+                                        )}
+                                    </div>
                                     <span className="text-xs font-bold bg-orange-100 text-orange-600 px-2 py-1 rounded flex items-center gap-1">
                                         <Clock className="w-3 h-3" /> {w.duration}
                                     </span>

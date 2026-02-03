@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, FileText, Calendar, Ruler, Weight, Activity, Pill, UserCircle, Settings, Key, Database, Save, Eye, EyeOff, Code, Copy, Check } from 'lucide-react';
+import { User, FileText, Calendar, Ruler, Weight, Activity, Pill, UserCircle, Settings, Key, Database, Save, Eye, EyeOff, Code, Copy, Check, TrendingUp, Plus, History, Trash2 } from 'lucide-react';
 import { UserProfile, HealthReport, SavedAppointment } from '../types';
 import HealthReportAnalyzer from './HealthReportAnalyzer';
 import AppointmentScheduler from './AppointmentScheduler';
@@ -35,6 +35,10 @@ const HealthManagement: React.FC<Props> = ({
   const [tempName, setTempName] = useState('');
   const [tempHeight, setTempHeight] = useState('');
   const [tempWeight, setTempWeight] = useState('');
+  
+  // Weight History State
+  const [newWeight, setNewWeight] = useState('');
+  const [showWeightInput, setShowWeightInput] = useState(false);
 
   // System Settings State
   const [apiKey, setApiKey] = useState('');
@@ -74,12 +78,67 @@ const HealthManagement: React.FC<Props> = ({
   const handleSaveProfile = () => {
     // 這裡會呼叫 App.tsx 的 handleUpdateProfile，進而寫入 DB
     const updatedProfile = { 
+        ...userProfile,
         name: tempName, 
         height: tempHeight, 
         weight: tempWeight 
     };
     onUpdateProfile(updatedProfile);
     alert("個人資料已更新並保存！");
+  };
+
+  const handleAddWeight = () => {
+      if (!newWeight || isNaN(parseFloat(newWeight))) {
+          alert("請輸入有效的體重數字");
+          return;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const newRecord = { date: today, weight: newWeight };
+      
+      const currentHistory = userProfile.weightHistory || [];
+      // 如果今天已經有紀錄，則更新它
+      const existsIndex = currentHistory.findIndex(r => r.date === today);
+      let updatedHistory = [...currentHistory];
+      
+      if (existsIndex >= 0) {
+          updatedHistory[existsIndex] = newRecord;
+      } else {
+          updatedHistory.push(newRecord);
+      }
+      
+      // Sort by date asc (for chart)
+      updatedHistory.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // 更新目前顯示的體重
+      setTempWeight(newWeight);
+
+      const updatedProfile = {
+          ...userProfile,
+          name: tempName,
+          height: tempHeight,
+          weight: newWeight, // 同步更新當前體重
+          weightHistory: updatedHistory
+      };
+
+      onUpdateProfile(updatedProfile);
+      setNewWeight('');
+      setShowWeightInput(false);
+      alert("體重記錄已更新！");
+  };
+
+  const handleDeleteWeightRecord = (recordDate: string) => {
+      if (!confirm(`確定要刪除 ${recordDate} 的體重紀錄嗎？`)) return;
+
+      const currentHistory = userProfile.weightHistory || [];
+      const updatedHistory = currentHistory.filter(r => r.date !== recordDate);
+      
+      const updatedProfile = {
+          ...userProfile,
+          weightHistory: updatedHistory
+      };
+      
+      onUpdateProfile(updatedProfile);
   };
 
   const handleSaveSystem = () => {
@@ -105,6 +164,65 @@ const HealthManagement: React.FC<Props> = ({
   };
 
   const bmiStatus = getBMIStatus(bmi);
+
+  // Simple SVG Line Chart Logic
+  const renderWeightChart = () => {
+      const history = userProfile.weightHistory || [];
+      if (history.length < 2) return null;
+
+      // Take last 7 entries for cleaner chart
+      const data = history.slice(-7);
+      const weights = data.map(d => parseFloat(d.weight));
+      const minW = Math.min(...weights) - 2;
+      const maxW = Math.max(...weights) + 2;
+      const range = maxW - minW;
+      
+      const points = data.map((d, i) => {
+          const x = (i / (data.length - 1)) * 100;
+          const y = 100 - ((parseFloat(d.weight) - minW) / range) * 100;
+          return `${x},${y}`;
+      }).join(' ');
+
+      return (
+          <div className="mt-4 mb-2">
+              <div className="h-32 w-full relative">
+                  <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      {/* Grid Lines */}
+                      <line x1="0" y1="25" x2="100" y2="25" stroke="#f1f5f9" strokeWidth="0.5" />
+                      <line x1="0" y1="50" x2="100" y2="50" stroke="#f1f5f9" strokeWidth="0.5" />
+                      <line x1="0" y1="75" x2="100" y2="75" stroke="#f1f5f9" strokeWidth="0.5" />
+                      
+                      {/* Trend Line */}
+                      <polyline
+                          fill="none"
+                          stroke="#3b82f6"
+                          strokeWidth="2"
+                          points={points}
+                      />
+                      
+                      {/* Points */}
+                      {data.map((d, i) => {
+                           const x = (i / (data.length - 1)) * 100;
+                           const y = 100 - ((parseFloat(d.weight) - minW) / range) * 100;
+                           return (
+                               <circle key={i} cx={x} cy={y} r="2" fill="white" stroke="#3b82f6" strokeWidth="1.5" />
+                           );
+                      })}
+                  </svg>
+                  
+                  {/* Labels */}
+                  <div className="absolute top-0 left-0 w-full h-full flex justify-between items-end pointer-events-none">
+                      {data.map((d, i) => (
+                          <div key={i} className="text-[10px] text-gray-400 text-center w-8 -ml-4 flex flex-col items-center">
+                              <span className="font-bold text-gray-800 mb-1">{d.weight}</span>
+                              <span>{d.date.substring(5).replace('-','/')}</span>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          </div>
+      );
+  };
 
   const TabButton = ({ id, label, icon: Icon }: { id: SubTab, label: string, icon: any }) => (
     <button
@@ -182,6 +300,74 @@ const HealthManagement: React.FC<Props> = ({
                     />
                     </div>
                 </div>
+
+                {/* Weight Trend Section */}
+                <div className="bg-blue-50/50 rounded-xl p-4 border border-blue-100">
+                    <div className="flex justify-between items-center mb-2">
+                        <h4 className="text-sm font-bold text-blue-800 flex items-center gap-2">
+                            <TrendingUp className="w-4 h-4" /> 體重紀錄與趨勢
+                        </h4>
+                        <button 
+                            onClick={() => setShowWeightInput(!showWeightInput)}
+                            className="text-xs bg-white text-blue-600 px-2 py-1 rounded-lg border border-blue-200 hover:bg-blue-50 font-bold flex items-center gap-1 shadow-sm"
+                        >
+                            <Plus className="w-3 h-3" /> 記錄今日
+                        </button>
+                    </div>
+
+                    {showWeightInput && (
+                        <div className="mb-4 flex gap-2 animate-fade-in-up">
+                            <input 
+                                type="number" 
+                                value={newWeight}
+                                onChange={(e) => setNewWeight(e.target.value)}
+                                placeholder="輸入今日體重 (kg)"
+                                className="flex-1 p-2 text-sm border border-gray-300 bg-white text-gray-900 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
+                                autoFocus
+                            />
+                            <button 
+                                onClick={handleAddWeight}
+                                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md"
+                            >
+                                確定
+                            </button>
+                        </div>
+                    )}
+
+                    {renderWeightChart()}
+
+                    {/* Weight History List */}
+                    {userProfile.weightHistory && userProfile.weightHistory.length > 0 && (
+                        <div className="mt-4 border-t border-blue-100 pt-3">
+                            <h5 className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1">
+                                <History className="w-3 h-3" /> 歷史紀錄 ({userProfile.weightHistory.length})
+                            </h5>
+                            <div className="max-h-48 overflow-y-auto pr-1 space-y-2">
+                                {[...userProfile.weightHistory].reverse().map((record, index) => (
+                                    <div key={index} className="flex items-center justify-between bg-white p-2.5 rounded-lg border border-blue-100 text-sm">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-gray-500 font-mono text-xs">{record.date}</span>
+                                            <span className="font-bold text-gray-800">{record.weight} kg</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleDeleteWeightRecord(record.date)}
+                                            className="text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
+                                            title="刪除紀錄"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {!userProfile.weightHistory?.length && (
+                        <p className="text-xs text-center text-blue-400 py-4">
+                            尚無紀錄，請點擊「記錄今日」開始追蹤
+                        </p>
+                    )}
+                </div>
               </div>
 
               {bmi && (
@@ -255,7 +441,7 @@ const HealthManagement: React.FC<Props> = ({
                                       {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                   </button>
                               </div>
-                              <p className="text-[10px] text-gray-400 mt-1">用於圖像辨識與 AI 建議生成</p>
+                              <p className="text-xs text-gray-400 mt-1 pl-1">API Key 僅儲存於瀏覽器，保障您的隱私</p>
                           </div>
 
                           <div>
