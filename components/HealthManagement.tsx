@@ -616,7 +616,7 @@ const HealthManagement: React.FC<Props> = ({
                               <ol className="list-decimal pl-4 text-xs text-orange-700 mb-3 space-y-1">
                                   <li>複製下方的新版程式碼</li>
                                   <li>到 Google Apps Script 專案貼上覆蓋</li>
-                                  <li>點擊<strong>「部署」</strong> -> <strong>「管理部署」</strong></li>
+                                  <li>點擊<strong>「部署」</strong> {'->'} <strong>「管理部署」</strong></li>
                                   <li>點擊<strong>「筆(編輯)」圖示</strong></li>
                                   <li>版本選擇<strong>「建立新版本」</strong> (這步最關鍵！)</li>
                                   <li>點擊「部署」</li>
