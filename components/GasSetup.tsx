@@ -7,83 +7,102 @@ interface Props {
 }
 
 // Export the GAS Code so it can be used in HealthManagement too
-export const GAS_CODE = `function doPost(e) {
-  var para;
+export const GAS_CODE = `/**
+ * HealthGuardian Backend v2.2 (Smart Read)
+ * - Profile 追加模式
+ * - 智慧讀取：跳過空白行，讀取最後一筆有效資料
+ * - 支援 LockService 防止衝突
+ */
+
+function doPost(e) {
+  var lock = LockService.getScriptLock();
   try {
-    para = JSON.parse(e.postData.contents);
-  } catch(e) {
-    return ContentService.createTextOutput(JSON.stringify({status:"error", message:"Invalid JSON"}));
+    lock.waitLock(30000); 
+  } catch (e) {
+    return createJSONOutput({status: "error", message: "Server is busy, please try again."});
   }
-  
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var action = para.action;
-  
-  if (action == 'read_all') {
-    return ContentService.createTextOutput(JSON.stringify({
-      foodLogs: readSheet(ss, 'FoodLogs'),
-      reports: readSheet(ss, 'Reports'),
-      workouts: readSheet(ss, 'Workouts'),
-      profile: readProfile(ss),
-      appointments: readSheet(ss, 'Appointments'),
-      recipes: readSheet(ss, 'Recipes'),
-      workoutPlan: readSheet(ss, 'WorkoutPlan')
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-  
-  if (action == 'save') {
-    var sheet = getOrCreateSheet(ss, para.type);
-    var data = para.data;
-    
-    // 特別處理 Profile，使其支援動態欄位
-    if (para.type === 'Profile') {
-       sheet.clear(); // 清空舊資料
-       appendData(sheet, data); // 使用動態寫入，不限制欄位
-       return ContentService.createTextOutput(JSON.stringify({status:"success"})).setMimeType(ContentService.MimeType.JSON);
+
+  try {
+    var para;
+    try {
+      para = JSON.parse(e.postData.contents);
+    } catch(e) {
+      return createJSONOutput({status: "error", message: "Invalid JSON format"});
     }
     
-    if (para.type === 'WorkoutPlan') {
-       var lastRow = sheet.getLastRow();
-       if (lastRow > 1) {
-         sheet.deleteRows(2, lastRow - 1);
-       }
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var action = para.action;
+    
+    // Read Action
+    if (action == 'read_all') {
+      return createJSONOutput({
+        foodLogs: readSheet(ss, 'FoodLogs'),
+        reports: readSheet(ss, 'Reports'),
+        workouts: readSheet(ss, 'Workouts'),
+        profile: readProfile(ss),
+        appointments: readSheet(ss, 'Appointments'),
+        recipes: readSheet(ss, 'Recipes'),
+        workoutPlan: readSheet(ss, 'WorkoutPlan')
+      });
     }
-    else if (data.id) {
-       var headers = getHeaders(sheet);
-       var idIndex = headers.indexOf('id');
-       
-       if (idIndex !== -1) {
-         var allData = sheet.getDataRange().getValues();
-         for (var i = 1; i < allData.length; i++) {
-           if (allData[i][idIndex] == data.id) {
-             sheet.deleteRow(i + 1);
-             break;
-           }
+    
+    // Save Action
+    if (action == 'save') {
+      var sheet = getOrCreateSheet(ss, para.type);
+      var data = para.data;
+      
+      // Profile: 追加模式 (Append Mode)
+      if (para.type === 'Profile') {
+         if (sheet.getLastRow() === 0) {
+             var initialHeaders = Object.keys(data);
+             sheet.appendRow(initialHeaders);
          }
-       }
-    }
-
-    appendData(sheet, data);
-    return ContentService.createTextOutput(JSON.stringify({status:"success"})).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  if (action == 'delete') {
-    var sheet = ss.getSheetByName(para.type);
-    if (sheet) {
-      var id = para.id;
-      var data = sheet.getDataRange().getValues();
-      var headers = data[0];
-      var idIdx = headers.indexOf('id');
-      if (idIdx > -1) {
-        for (var i = 1; i < data.length; i++) {
-          if (data[i][idIdx] == id) {
-            sheet.deleteRow(i + 1);
-            break;
-          }
-        }
+         updateHeaders(sheet, data);
+         
+         // 直接追加新資料
+         appendData(sheet, data);
+         return createJSONOutput({status: "success", type: "Profile Appended"});
       }
+      
+      // WorkoutPlan: 覆寫模式
+      if (para.type === 'WorkoutPlan') {
+         var lastRow = sheet.getLastRow();
+         if (lastRow > 1) {
+           sheet.deleteRows(2, lastRow - 1);
+         }
+      }
+      // 其他資料: 依 ID 更新 (刪除舊的)
+      else if (data.id) {
+         deleteById(sheet, data.id);
+      }
+  
+      appendData(sheet, data);
+      return createJSONOutput({status: "success"});
     }
-    return ContentService.createTextOutput(JSON.stringify({status:"deleted"})).setMimeType(ContentService.MimeType.JSON);
+  
+    // Delete Action
+    if (action == 'delete') {
+      var sheet = ss.getSheetByName(para.type);
+      if (sheet) {
+        deleteById(sheet, para.id);
+      }
+      return createJSONOutput({status: "deleted"});
+    }
+
+    return createJSONOutput({status: "error", message: "Unknown action"});
+
+  } catch (error) {
+    return createJSONOutput({status: "error", message: error.toString()});
+  } finally {
+    lock.releaseLock();
   }
+}
+
+// --- Helper Functions ---
+
+function createJSONOutput(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function getOrCreateSheet(ss, name) {
@@ -95,21 +114,16 @@ function getOrCreateSheet(ss, name) {
 }
 
 function getHeaders(sheet) {
-  if (sheet.getLastColumn() < 1) return [];
+  if (sheet.getLastColumn() < 1 || sheet.getLastRow() < 1) return [];
   return sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
 }
 
-function appendData(sheet, data) {
-  var headers = [];
-  if (sheet.getLastColumn() > 0) {
-    headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  }
-  
-  var newRow = [];
+function updateHeaders(sheet, data) {
+  var headers = getHeaders(sheet);
   var keys = Object.keys(data);
-  
   var newHeaders = headers.slice();
   var headerChanged = false;
+  
   keys.forEach(function(k) {
     if (headers.indexOf(k) === -1) {
       newHeaders.push(k);
@@ -123,18 +137,41 @@ function appendData(sheet, data) {
     } else {
        sheet.getRange(1, 1, 1, newHeaders.length).setValues([newHeaders]);
     }
-    headers = newHeaders;
   }
-  
+  return newHeaders;
+}
+
+function appendData(sheet, data) {
+  var headers = updateHeaders(sheet, data);
+  var newRow = [];
   headers.forEach(function(h) {
     var val = data[h];
-    if (typeof val === 'object') {
+    if (val && (typeof val === 'object' || Array.isArray(val))) {
       val = JSON.stringify(val);
     }
-    newRow.push(val || '');
+    if (val === undefined || val === null) {
+      val = '';
+    }
+    // 強制轉字串避免 Google Sheet 科學記號問題
+    newRow.push("'" + val); 
   });
-  
   sheet.appendRow(newRow);
+}
+
+function deleteById(sheet, id) {
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return;
+  var headers = data[0];
+  var idIdx = headers.indexOf('id');
+  
+  if (idIdx > -1) {
+    for (var i = data.length - 1; i >= 1; i--) {
+      if (data[i][idIdx] == id) {
+        sheet.deleteRow(i + 1);
+        return; 
+      }
+    }
+  }
 }
 
 function readSheet(ss, name) {
@@ -150,8 +187,13 @@ function readSheet(ss, name) {
   for (var i = 1; i < rows.length; i++) {
     var obj = {};
     var row = rows[i];
+    var hasData = false;
+    
     for (var j = 0; j < headers.length; j++) {
       var val = row[j];
+      if (typeof val === 'string' && val.startsWith("'")) {
+        val = val.substring(1);
+      }
       try {
         if (typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))) {
              var parsed = JSON.parse(val);
@@ -162,22 +204,28 @@ function readSheet(ss, name) {
       } catch(e) {
         obj[headers[j]] = val;
       }
+      if (val !== '') hasData = true;
     }
-    result.push(obj);
+    if (hasData) result.push(obj);
   }
   return result;
 }
 
 function readProfile(ss) {
-  var sheet = ss.getSheetByName('Profile');
-  if (!sheet) return {};
-  
-  var data = sheet.getDataRange().getValues();
-  if (data.length === 0) return {};
-
-  // 讀取最後一行資料
   var list = readSheet(ss, 'Profile');
-  return list.length > 0 ? list[list.length - 1] : {};
+  if (list.length === 0) return {};
+
+  // 改進：從最後一筆往回找，找到第一筆有 'name' 的有效資料
+  // 這樣可以避免讀取到只有 timestamp 或空白的無效行
+  for (var i = list.length - 1; i >= 0; i--) {
+    var p = list[i];
+    if (p.name && p.name.toString().trim() !== "") {
+      return p;
+    }
+  }
+  
+  // 如果都沒找到名字，回傳最後一筆 (fallback)
+  return list[list.length - 1];
 }`;
 
 const GasSetup: React.FC<Props> = ({ onConnect }) => {
@@ -199,13 +247,8 @@ const GasSetup: React.FC<Props> = ({ onConnect }) => {
   const handleConnect = async () => {
     setError(null);
     const cleanUrl = url.trim();
-    const cleanName = name.trim();
+    // const cleanName = name.trim(); // 這裡不再強制需要名字，因為我們不寫入
 
-    if (!cleanName) {
-        setError("請輸入您的稱呼 (例如: Alex)");
-        return;
-    }
-    
     if (!cleanUrl) {
         setError("請輸入 Google Apps Script 網址");
         return;
@@ -221,12 +264,8 @@ const GasSetup: React.FC<Props> = ({ onConnect }) => {
       const isConnected = await dbService.testConnection(cleanUrl);
       if (isConnected) {
         setGasUrl(cleanUrl);
-        // Save profile if connected
-        try {
-             await dbService.saveUserProfile({ name: cleanName, height: '', weight: '' });
-        } catch(e) {
-             console.warn("Failed to save initial profile", e);
-        }
+        // 修正：連線時不再自動儲存 Profile，避免產生空白資料
+        // 如果使用者是第一次使用，他們稍後可以在個人資料頁面儲存
         onConnect();
       } else {
         setError("驗證失敗：伺服器回傳內容不正確。請確認部署設定。");
@@ -273,14 +312,14 @@ const GasSetup: React.FC<Props> = ({ onConnect }) => {
       <div className="flex-1 p-8 md:p-12 overflow-y-auto">
          <div className="max-w-xl mx-auto space-y-8">
             
-            {/* Step 1: User Info */}
+            {/* Step 1: User Info (Optional now) */}
             <div className="space-y-4">
                 <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                     <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
                     您的基本資料
                 </h2>
                 <div>
-                   <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 block">您的稱呼</label>
+                   <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 block">您的稱呼 (選填)</label>
                    <div className="relative">
                        <User className="w-5 h-5 text-gray-400 absolute left-3 top-3" />
                        <input 
@@ -291,6 +330,7 @@ const GasSetup: React.FC<Props> = ({ onConnect }) => {
                          className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all"
                        />
                    </div>
+                   <p className="text-[10px] text-gray-400 mt-1 pl-1">您稍後可以在「健康管理」頁面完整設定</p>
                 </div>
             </div>
 

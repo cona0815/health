@@ -181,7 +181,12 @@ export const dbService = {
 
   // --- Writes ---
   saveUserProfile: async (profile: UserProfile) => {
-    await callGasApi({ action: "save", type: "Profile", data: profile });
+    // 加上 timestamp 方便追蹤歷史
+    const dataToSave = { 
+        ...profile, 
+        updatedAt: new Date().toLocaleString('zh-TW', { hour12: false }) 
+    };
+    await callGasApi({ action: "save", type: "Profile", data: dataToSave });
   },
 
   addFoodLog: async (log: FoodAnalysis) => {

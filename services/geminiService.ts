@@ -33,16 +33,66 @@ const getAI = (): GoogleGenAI => {
 
 // --- Helpers ---
 
+// 圖片壓縮設定
+const COMPRESSION_CONFIG = {
+  maxWidth: 1024,
+  maxHeight: 1024,
+  quality: 0.8,
+  mimeType: 'image/jpeg'
+};
+
 export const fileToGenerativePart = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
+    // 如果不是圖片 (例如 PDF)，直接回傳原始 Base64
+    if (!file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64String = reader.result as string;
+            const base64Data = base64String.split(',')[1];
+            resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+        return;
+    }
+
+    // 如果是圖片，進行 Canvas 壓縮
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      const base64Data = base64String.split(',')[1];
-      resolve(base64Data);
-    };
-    reader.onerror = reject;
     reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        // 計算縮放比例，保持長寬比
+        if (width > height) {
+          if (width > COMPRESSION_CONFIG.maxWidth) {
+            height = Math.round(height * (COMPRESSION_CONFIG.maxWidth / width));
+            width = COMPRESSION_CONFIG.maxWidth;
+          }
+        } else {
+          if (height > COMPRESSION_CONFIG.maxHeight) {
+            width = Math.round(width * (COMPRESSION_CONFIG.maxHeight / height));
+            height = COMPRESSION_CONFIG.maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        // 轉為 JPEG 壓縮格式
+        const dataUrl = canvas.toDataURL(COMPRESSION_CONFIG.mimeType, COMPRESSION_CONFIG.quality);
+        const base64Data = dataUrl.split(',')[1];
+        resolve(base64Data);
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
   });
 };
 
@@ -118,9 +168,10 @@ export const analyzeFoodImage = async (
   `;
 
   try {
+    // 雖然傳入 mimeType，但因為 fileToGenerativePart 已經轉成 JPEG，這裡強制使用 jpeg
     const response = await getAI().models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: { parts: [{ inlineData: { mimeType, data: imageBase64 } }, { text: prompt }] }
+      contents: { parts: [{ inlineData: { mimeType: 'image/jpeg', data: imageBase64 } }, { text: prompt }] }
     });
     const data = JSON.parse(extractJson(response.text || "{}"));
     return { ...data, timestamp: new Date().toISOString() };
@@ -210,9 +261,13 @@ export const findNearbyRestaurants = async (foodName: string, lat: number, lng: 
 export const analyzeHealthReport = async (imageBase64: string, mimeType: string): Promise<HealthReport> => {
   const prompt = `分析健檢報告 (繁體中文 JSON)。提取 metrics (name, value, status: Normal/Warning/Critical, advice) 與 dietaryRestrictions。`;
   try {
+    // 圖片類皆已轉為 JPEG
+    const isImage = mimeType.startsWith('image/');
+    const finalMime = isImage ? 'image/jpeg' : mimeType;
+    
     const response = await getAI().models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: { parts: [{ inlineData: { mimeType, data: imageBase64 } }, { text: prompt }] }
+      contents: { parts: [{ inlineData: { mimeType: finalMime, data: imageBase64 } }, { text: prompt }] }
     });
     return { ...JSON.parse(extractJson(response.text || "{}")), analyzedAt: new Date().toISOString() };
   } catch (error) { throw error; }
@@ -233,9 +288,12 @@ export const extractAppointmentDetails = async (imageBase64: string, mimeType: s
   重點：請精準識別日期與時間。`;
 
   try {
+    const isImage = mimeType.startsWith('image/');
+    const finalMime = isImage ? 'image/jpeg' : mimeType;
+
     const response = await getAI().models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: { parts: [{ inlineData: { mimeType, data: imageBase64 } }, { text: prompt }] }
+      contents: { parts: [{ inlineData: { mimeType: finalMime, data: imageBase64 } }, { text: prompt }] }
     });
     return JSON.parse(extractJson(response.text || "{}"));
   } catch (error) { throw error; }
@@ -247,7 +305,7 @@ export const analyzeMedication = async (imageBase64: string, mimeType: string, h
   try {
     const response = await getAI().models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: { parts: [{ inlineData: { mimeType, data: imageBase64 } }, { text: prompt }] }
+      contents: { parts: [{ inlineData: { mimeType: 'image/jpeg', data: imageBase64 } }, { text: prompt }] }
     });
     return JSON.parse(extractJson(response.text || "{}"));
   } catch (error) { throw error; }
@@ -357,7 +415,7 @@ export const analyzeProductLabel = async (imageBase64: string, mimeType: string,
   try {
     const response = await getAI().models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: { parts: [{ inlineData: { mimeType, data: imageBase64 } }, { text: prompt }] }
+      contents: { parts: [{ inlineData: { mimeType: 'image/jpeg', data: imageBase64 } }, { text: prompt }] }
     });
     return JSON.parse(extractJson(response.text || "{}"));
   } catch (error) { throw error; }

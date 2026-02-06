@@ -13,11 +13,18 @@ export interface WeightRecord {
   weight: string; // kg
 }
 
+export type Gender = 'male' | 'female';
+export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
+
 export interface UserProfile {
-  name?: string; // 使用者暱稱
+  name?: string; 
   height: string; // cm
   weight: string; // kg (目前體重)
-  weightHistory?: WeightRecord[]; // 體重歷史紀錄
+  gender?: Gender; 
+  birthDate?: string; // YYYY-MM-DD
+  activityLevel?: ActivityLevel; 
+  targetDeficit?: number; // 新增：每日熱量赤字目標 (例如 300, 500)
+  weightHistory?: WeightRecord[]; 
 }
 
 export interface Nutrient {
@@ -29,11 +36,11 @@ export interface Nutrient {
 export interface FoodAnalysis {
   foodName: string;
   calories: number;
-  estimatedWeight?: string; // 新增：估算重量 (例如 "350g")
-  ingredients?: string[]; // 主要食材列表
+  estimatedWeight?: string; 
+  ingredients?: string[]; 
   nutrients: Nutrient[];
   riskLevel: RiskLevel;
-  diagnosis?: string; // 健康診斷短評 (Diagnosis)
+  diagnosis?: string; 
   healthAdvice: string;
   mealType: MealType;
   timestamp: string;
@@ -84,14 +91,12 @@ export interface FoodSuggestion {
   restaurants?: Restaurant[];
 }
 
-// --- New Types for Features ---
-
 export interface Medication {
   name: string;
-  indication: string; // 適應症
-  usage: string; // 用法
+  indication: string; 
+  usage: string; 
   sideEffects: string;
-  interactionWarning: string; // 與健檢報告的衝突警告
+  interactionWarning: string; 
   riskLevel: RiskLevel;
 }
 
@@ -107,8 +112,8 @@ export interface WorkoutLog {
   id: string;
   activity: string;
   duration: string;
-  timestamp: string; // ISO String
-  caloriesBurned?: number; // 新增：消耗熱量
+  timestamp: string; 
+  caloriesBurned?: number; 
 }
 
 export interface Recipe {
@@ -118,10 +123,10 @@ export interface Recipe {
   tags: string[];
   ingredients: string[];
   steps: string[];
-  videoKeyword: string; // 用於搜尋 YouTube
-  reason: string; // 為什麼適合該使用者
-  notes?: string; // 使用者筆記
-  checkedIngredients?: string[]; // 採買勾選狀態
+  videoKeyword: string; 
+  reason: string; 
+  notes?: string; 
+  checkedIngredients?: string[]; 
 }
 
 export interface GroceryItem {

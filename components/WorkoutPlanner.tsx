@@ -30,6 +30,9 @@ const WorkoutPlanner: React.FC<Props> = ({ userProfile, healthReport, workoutLog
   const [manualDuration, setManualDuration] = useState("");
   const [calcLoading, setCalcLoading] = useState(false);
   
+  // Tracking which item is being logged to show specific loader
+  const [loggingIndex, setLoggingIndex] = useState<number | null>(null);
+  
   // Filter logs for today
   const todayStr = new Date().toISOString().split('T')[0];
   const todayLogs = workoutLogs.filter(log => log.timestamp && log.timestamp.startsWith(todayStr));
@@ -46,14 +49,35 @@ const WorkoutPlanner: React.FC<Props> = ({ userProfile, healthReport, workoutLog
     }
   };
 
-  const handleLogWorkout = (dayPlan: WorkoutPlanDay) => {
-    const newLog: WorkoutLog = {
-      id: Date.now().toString(),
-      activity: dayPlan.activity,
-      duration: dayPlan.duration,
-      timestamp: new Date().toISOString()
-    };
-    onAddWorkout(newLog);
+  const handleLogWorkout = async (dayPlan: WorkoutPlanDay, index: number) => {
+    setLoggingIndex(index);
+    try {
+        // Calculate calories before saving
+        const calories = await calculateExerciseCalories(dayPlan.activity, dayPlan.duration, userProfile);
+        
+        const newLog: WorkoutLog = {
+          id: Date.now().toString(),
+          activity: dayPlan.activity,
+          duration: dayPlan.duration,
+          timestamp: new Date().toISOString(),
+          caloriesBurned: calories
+        };
+        onAddWorkout(newLog);
+        alert(`已完成運動！AI 估算消耗: ${calories} kcal`);
+    } catch (e) {
+        console.error(e);
+        // Fallback without calories if AI fails
+        const newLog: WorkoutLog = {
+          id: Date.now().toString(),
+          activity: dayPlan.activity,
+          duration: dayPlan.duration,
+          timestamp: new Date().toISOString(),
+          caloriesBurned: 0
+        };
+        onAddWorkout(newLog);
+    } finally {
+        setLoggingIndex(null);
+    }
   };
 
   const handleManualAdd = async () => {
@@ -340,11 +364,12 @@ const WorkoutPlanner: React.FC<Props> = ({ userProfile, healthReport, workoutLog
                         </div>
                     ) : (
                         <button 
-                          onClick={() => handleLogWorkout(day)}
-                          className="flex-shrink-0 p-2 md:p-3 rounded-full bg-gray-100 hover:bg-green-100 text-gray-400 hover:text-green-600 transition-colors active:scale-90"
+                          onClick={() => handleLogWorkout(day, idx)}
+                          disabled={loggingIndex === idx}
+                          className="flex-shrink-0 p-2 md:p-3 rounded-full bg-gray-100 hover:bg-green-100 text-gray-400 hover:text-green-600 transition-colors active:scale-90 disabled:opacity-70 disabled:cursor-not-allowed"
                           title="標記為今日已完成"
                         >
-                          <CheckSquare className="w-5 h-5 md:w-6 md:h-6" />
+                          {loggingIndex === idx ? <Loader2 className="w-5 h-5 md:w-6 md:h-6 animate-spin text-green-600" /> : <CheckSquare className="w-5 h-5 md:w-6 md:h-6" />}
                         </button>
                     )}
                 </div>

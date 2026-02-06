@@ -67,49 +67,85 @@ const App: React.FC = () => {
     }
   };
 
-  const handleFoodAnalysisComplete = (result: FoodAnalysis) => {
+  const handleFoodAnalysisComplete = async (result: FoodAnalysis) => {
     setFoodLogs(prev => [result, ...prev]);
-    dbService.addFoodLog(result); 
+    try {
+        await dbService.addFoodLog(result);
+    } catch (e) {
+        console.error("Save food log failed", e);
+        alert("資料儲存失敗，請檢查連線");
+    }
   };
 
-  const handleUpdateLog = (timestamp: string, updatedLog: FoodAnalysis) => {
+  const handleUpdateLog = async (timestamp: string, updatedLog: FoodAnalysis) => {
     setFoodLogs(prev => prev.map(log => log.timestamp === timestamp ? updatedLog : log));
-    dbService.updateFoodLog(timestamp, updatedLog);
+    try {
+        await dbService.updateFoodLog(timestamp, updatedLog);
+    } catch (e) {
+        alert("更新失敗，請檢查連線");
+    }
   };
 
-  const handleAddWorkout = (log: WorkoutLog) => {
+  const handleAddWorkout = async (log: WorkoutLog) => {
     setWorkoutLogs(prev => [log, ...prev]);
-    dbService.addWorkoutLog(log);
+    try {
+        await dbService.addWorkoutLog(log);
+    } catch (e) {
+        alert("運動紀錄儲存失敗");
+    }
   };
 
-  const handleReportAnalyzed = (report: HealthReport) => {
+  const handleReportAnalyzed = async (report: HealthReport) => {
     setHealthReports(prev => [report, ...prev]);
-    alert("健檢報告已上傳至 Google Sheets！");
-    dbService.addHealthReport(report);
+    try {
+        await dbService.addHealthReport(report);
+        alert("健檢報告已上傳並儲存至 Google Sheets！");
+    } catch (e) {
+        alert("健檢報告儲存失敗，請檢查連線");
+    }
   };
 
-  const handleUpdateProfile = (profile: UserProfile) => {
+  const handleUpdateProfile = async (profile: UserProfile) => {
+    // Optimistic update
     setUserProfile(profile);
-    dbService.saveUserProfile(profile);
+    try {
+        await dbService.saveUserProfile(profile);
+    } catch (e) {
+        console.error(e);
+        alert("個人資料儲存失敗！請檢查您的 Google Sheets 連線與部署設定。");
+        throw e; // Re-throw to let child components know
+    }
   };
   
-  const handleSaveAppointment = (appointment: SavedAppointment) => {
+  const handleSaveAppointment = async (appointment: SavedAppointment) => {
     setAppointments(prev => [appointment, ...prev]);
-    dbService.saveAppointment(appointment);
+    try {
+        await dbService.saveAppointment(appointment);
+    } catch (e) {
+        alert("預約儲存失敗");
+    }
   };
 
-  const handleDeleteAppointment = (id: string) => {
+  const handleDeleteAppointment = async (id: string) => {
     setAppointments(prev => prev.filter(a => a.id !== id));
-    dbService.deleteAppointment(id);
+    try {
+        await dbService.deleteAppointment(id);
+    } catch (e) {
+        console.error(e);
+    }
   };
 
-  const handleSaveWorkoutPlan = (plan: WorkoutPlanDay[]) => {
+  const handleSaveWorkoutPlan = async (plan: WorkoutPlanDay[]) => {
     setCurrentWorkoutPlan(plan);
-    dbService.saveWorkoutPlan(plan);
+    try {
+        await dbService.saveWorkoutPlan(plan);
+    } catch (e) {
+        alert("運動計畫儲存失敗");
+    }
   };
   
   // Handle Save/Update Recipe
-  const handleSaveRecipe = (recipe: Recipe) => {
+  const handleSaveRecipe = async (recipe: Recipe) => {
     setSavedRecipes(prev => {
       const exists = prev.find(r => r.id === recipe.id);
       if (exists) {
@@ -117,12 +153,18 @@ const App: React.FC = () => {
       }
       return [recipe, ...prev];
     });
-    dbService.saveRecipe(recipe);
+    try {
+        await dbService.saveRecipe(recipe);
+    } catch (e) {
+        alert("食譜儲存失敗");
+    }
   };
 
-  const handleDeleteRecipe = (id: string) => {
+  const handleDeleteRecipe = async (id: string) => {
     setSavedRecipes(prev => prev.filter(r => r.id !== id));
-    dbService.deleteRecipe(id);
+    try {
+        await dbService.deleteRecipe(id);
+    } catch (e) { console.error(e); }
   };
 
   const handleDisconnect = () => {
@@ -148,6 +190,7 @@ const App: React.FC = () => {
             workoutPlan={currentWorkoutPlan}
             workoutLogs={workoutLogs}
             onNavigate={setActiveTab}
+            onAddWorkout={handleAddWorkout}
           />
         );
       case 'FOOD':
@@ -161,7 +204,6 @@ const App: React.FC = () => {
               savedRecipes={savedRecipes}
               onSaveRecipe={handleSaveRecipe}
               onDeleteRecipe={handleDeleteRecipe}
-              // New Props for Dashboard
               foodLogs={foodLogs}
               appointments={appointments}
               workoutPlan={currentWorkoutPlan}
