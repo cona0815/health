@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Activity, Calendar, Dumbbell, Flame, CheckCircle2, ChevronDown, ChevronUp, MapPin, User, Clock, FileText, Utensils, Zap, Trophy, AlertTriangle, Sparkles, AlertCircle, Target, Plus, CheckSquare, Save, Loader2 } from 'lucide-react';
+import { Activity, Calendar, Dumbbell, Flame, CheckCircle2, ChevronDown, ChevronUp, MapPin, User, Clock, FileText, Utensils, Zap, Trophy, AlertTriangle, Sparkles, AlertCircle, Target, Plus, CheckSquare, Save, Loader2, Camera, ArrowRight } from 'lucide-react';
 import { FoodAnalysis, SavedAppointment, WorkoutPlanDay, WorkoutLog, UserProfile, ViewState, ActivityLevel } from '../types';
 import { calculateExerciseCalories } from '../services/geminiService';
 
@@ -21,7 +21,18 @@ const ACTIVITY_FACTORS: Record<ActivityLevel, number> = {
     'very_active': 1.9
 };
 
-const COMMON_QUICK_EXERCISES = ["跑步", "快走", "游泳", "重訓", "瑜珈"];
+const COMMON_QUICK_EXERCISES = [
+    "快走 (Brisk Walking)", 
+    "慢跑 (Jogging)", 
+    "游泳 (Swimming)", 
+    "重訓 (Weight Training)", 
+    "瑜珈 (Yoga)", 
+    "皮拉提斯 (Pilates)", 
+    "騎腳踏車 (Cycling)", 
+    "跳繩 (Jump Rope)", 
+    "HIIT 間歇運動",
+    "登山 (Hiking)"
+];
 
 const Dashboard: React.FC<Props> = ({ 
   userProfile, foodLogs, appointments, workoutPlan, workoutLogs, onNavigate, onAddWorkout
@@ -77,81 +88,41 @@ const Dashboard: React.FC<Props> = ({
   }, [workoutLogs, todayStr]);
 
   // Logic: 
+  // Daily Budget = TDEE - Deficit Goal
   // Net Intake = Food - Exercise
-  // Goal: Net Intake <= (TDEE - Deficit)
-  // Current Deficit Created = TDEE - Net Intake
+  // Remaining = Daily Budget - Net Intake
   
+  const dailyBudget = tdee - targetDeficit;
   const netIntake = todayFoodCalories - todayExerciseCalories;
-  const deficitCreated = tdee - netIntake;
-  const budgetLimit = tdee - targetDeficit;
+  const remainingCalories = dailyBudget - netIntake;
   
-  // Calculations for Progress
-  // rawPercent is used for logic (can go over 100%)
-  const rawPercent = budgetLimit > 0 ? (netIntake / budgetLimit) * 100 : 0;
-  // progressPercent is clamped for the visual ring
-  const progressPercent = Math.min(100, Math.max(0, rawPercent));
+  // Progress for the circle (0 to 100%)
+  // If remaining is full (didn't eat), percent is 0 used. 
+  // We want to show how much "Budget" is used.
+  const usedPercent = Math.max(0, (netIntake / dailyBudget) * 100);
+  // Clone for visual capping at 100 for the stroke, but keep logic for color
+  const visualPercent = Math.min(100, usedPercent);
   
-  // Status Determination
-  let statusColor = "text-gray-500";
-  let statusText = "維持平衡";
-  let statusIcon = <Activity className="w-5 h-5" />;
-  let cardGradient = "from-gray-700 to-gray-900"; // Default neutral
-  let ringColor = "stroke-gray-400";
+  // Status Colors & Feedback
+  let statusColor = "text-teal-100";
+  let cardGradient = "from-teal-500 to-emerald-600"; // Default Safe (Green/Teal)
+  let ringColor = "stroke-teal-200";
+  let ringBgColor = "stroke-teal-500/30";
+  let statusMessage = "攝取量控制良好";
 
-  // Dynamic Feedback Message Logic
-  let feedbackMessage = "";
-  let feedbackIcon = <Sparkles className="w-4 h-4" />;
-  let feedbackBg = "bg-white/20";
-
-  if (deficitCreated >= targetDeficit && targetDeficit > 0) {
-      // Hit the target deficit!
-      statusColor = "text-green-300";
-      statusText = "🔥 脂肪燃燒中 (達成目標)";
-      statusIcon = <Flame className="w-5 h-5 animate-pulse" />;
-      cardGradient = "from-emerald-600 to-teal-700";
-      ringColor = "stroke-emerald-300";
-  } else if (deficitCreated > 0) {
-      // In deficit, but maybe not hitting the full target yet
-      statusColor = "text-yellow-300";
-      statusText = "⚡ 熱量赤字累積中";
-      statusIcon = <Zap className="w-5 h-5" />;
-      cardGradient = "from-amber-500 to-orange-600";
-      ringColor = "stroke-yellow-300";
-  } else {
-      // Surplus (Eating more than TDEE)
-      statusColor = "text-red-300";
-      statusText = "⚠️ 熱量盈餘 (注意攝取)";
-      statusIcon = <AlertTriangle className="w-5 h-5" />;
-      cardGradient = "from-red-600 to-pink-700";
-      ringColor = "stroke-red-300";
-  }
-
-  // Determine specific feedback text based on raw percentage
-  if (rawPercent < 40) {
-      feedbackMessage = "🌞 活力滿滿的一天！記得要吃飽才有力氣減重喔 💪";
-      feedbackIcon = <Utensils className="w-4 h-4" />;
-      feedbackBg = "bg-white/20 text-white";
-  } else if (rawPercent < 80) {
-      feedbackMessage = "✨ 節奏很棒！熱量控制在完美範圍內，繼續保持 🎵";
-      feedbackIcon = <CheckCircle2 className="w-4 h-4" />;
-      feedbackBg = "bg-green-400/30 text-green-100";
-  } else if (rawPercent <= 100) {
-      feedbackMessage = "🎯 即將達標！今日額度剩餘不多，晚餐請精打細算 🥗";
-      feedbackIcon = <Target className="w-4 h-4" />;
-      feedbackBg = "bg-yellow-400/30 text-yellow-100";
-  } else {
-      // Over budget limit
-      if (netIntake < tdee) {
-          // Over budget (target deficit), but still under TDEE (maintenance)
-          feedbackMessage = "😮 稍微超出赤字目標，但還在 TDEE 範圍內！多動動補回來吧 🏃";
-          feedbackIcon = <Dumbbell className="w-4 h-4" />;
-          feedbackBg = "bg-orange-400/30 text-orange-100";
-      } else {
-          // Over TDEE (Surplus)
-          feedbackMessage = "🚨 熱量爆表啦！明天繼續努力，今晚少吃點讓腸胃休息 🛑";
-          feedbackIcon = <AlertCircle className="w-4 h-4" />;
-          feedbackBg = "bg-red-500/40 text-red-100";
-      }
+  if (remainingCalories < 0) {
+      // 爆表 (Over Budget) -> Red Alert
+      cardGradient = "from-red-600 to-rose-700";
+      ringColor = "stroke-red-200";
+      ringBgColor = "stroke-red-900/30";
+      statusMessage = "⚠️ 熱量已超標！";
+      statusColor = "text-red-100";
+  } else if (remainingCalories < 200) {
+      // Warning Zone -> Orange
+      cardGradient = "from-orange-500 to-amber-600";
+      ringColor = "stroke-orange-200";
+      ringBgColor = "stroke-orange-800/30";
+      statusMessage = "即將達標，注意晚餐";
   }
 
   // 3. Next Appointment
@@ -194,9 +165,7 @@ const Dashboard: React.FC<Props> = ({
       
       setCheckingPlan(true);
       try {
-          // 計算熱量
           const calories = await calculateExerciseCalories(todayWorkout.activity, todayWorkout.duration, userProfile);
-
           const newLog: WorkoutLog = {
               id: Date.now().toString(),
               activity: todayWorkout.activity,
@@ -208,7 +177,6 @@ const Dashboard: React.FC<Props> = ({
           alert(`運動目標達成！消耗熱量約 ${calories} kcal`);
       } catch (e) {
           console.error(e);
-          // Fallback
           const newLog: WorkoutLog = {
               id: Date.now().toString(),
               activity: todayWorkout.activity,
@@ -223,12 +191,11 @@ const Dashboard: React.FC<Props> = ({
   };
 
   const handleQuickAdd = async () => {
-      if (!quickActivity || !quickDuration) return alert("請輸入運動項目與時間");
+      if (!quickActivity || !quickDuration) return alert("請選擇運動項目並輸入時間");
       
       setIsCalculating(true);
       try {
           const durationStr = quickDuration.includes("分") ? quickDuration : quickDuration + "分鐘";
-          // 透過 AI 計算熱量
           const calories = await calculateExerciseCalories(quickActivity, durationStr, userProfile);
 
           const newLog: WorkoutLog = {
@@ -236,7 +203,7 @@ const Dashboard: React.FC<Props> = ({
               activity: quickActivity,
               duration: durationStr,
               timestamp: new Date().toISOString(),
-              caloriesBurned: calories // 加入計算後的熱量
+              caloriesBurned: calories
           };
           onAddWorkout(newLog);
           
@@ -245,7 +212,6 @@ const Dashboard: React.FC<Props> = ({
           alert(`運動記錄已新增！(預估消耗 ${calories} kcal)`);
       } catch (e) {
           console.error(e);
-          // 失敗時仍新增，但熱量為 0
           const durationStr = quickDuration.includes("分") ? quickDuration : quickDuration + "分鐘";
           const newLog: WorkoutLog = {
               id: Date.now().toString(),
@@ -265,141 +231,129 @@ const Dashboard: React.FC<Props> = ({
 
   return (
     <div className="space-y-6 animate-fade-in pb-20">
-       {/* Greeting */}
-       <div className="flex justify-between items-end mb-2 px-1">
+       {/* Header with Greeting & Quick Action */}
+       <div className="flex justify-between items-center mb-2 px-1">
           <div>
             <h2 className="text-2xl font-black text-gray-800">
               早安，{userProfile.name || '健康夥伴'}
             </h2>
             <p className="text-gray-500 text-sm font-medium">今天是 {today.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'long' })}</p>
           </div>
-          <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center border-2 border-white shadow-sm">
-             <Activity className="w-5 h-5 text-teal-600" />
-          </div>
+          
+          {/* NEW: Camera Shortcut Button */}
+          <button 
+             onClick={() => onNavigate('FOOD')}
+             className="bg-gradient-to-r from-teal-500 to-emerald-500 text-white px-4 py-2 rounded-xl font-bold shadow-md hover:shadow-lg active:scale-95 transition-all flex items-center gap-2"
+          >
+             <Camera className="w-5 h-5" />
+             <span className="hidden sm:inline">餐點分析</span>
+          </button>
        </div>
 
-       {/* MAIN HERO CARD: CALORIE DEFICIT */}
-       <div className={`bg-gradient-to-br ${cardGradient} rounded-3xl p-6 text-white shadow-xl relative overflow-hidden transition-colors duration-500`} onClick={() => onNavigate('FOOD')}>
-          {/* Background decoration */}
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white opacity-10 rounded-full blur-2xl pointer-events-none"></div>
+       {/* MAIN HERO CARD: REMAINING CALORIES CIRCLE */}
+       <div 
+         className={`bg-gradient-to-br ${cardGradient} rounded-3xl p-6 text-white shadow-xl relative overflow-hidden transition-all duration-500 cursor-pointer group`}
+         onClick={() => onNavigate('FOOD')}
+       >
+          {/* Decorative Blur */}
+          <div className="absolute -top-20 -right-20 w-64 h-64 bg-white opacity-10 rounded-full blur-3xl pointer-events-none"></div>
           
-          <div className="flex justify-between items-start mb-4 relative z-10">
-             <div>
-                <div className={`flex items-center gap-2 font-bold text-sm mb-2 ${statusColor} bg-black/20 px-3 py-1 rounded-full w-fit backdrop-blur-sm`}>
-                    {statusIcon}
-                    {statusText}
-                </div>
-                
-                <p className="text-xs opacity-80 uppercase tracking-wider mb-1">今日淨攝取 (Net Intake)</p>
-                <div className="flex items-baseline gap-1">
-                    <h3 className="text-5xl font-black">{netIntake < 0 ? 0 : netIntake}</h3>
-                    <span className="text-sm font-medium opacity-70">kcal</span>
-                </div>
-                
-                <div className="mt-2 text-sm space-y-1">
-                    <div className="flex items-center gap-2">
-                        <div className="w-1 h-1 rounded-full bg-white opacity-50"></div>
-                        <span className="opacity-80">預算上限 (TDEE - 赤字): </span>
-                        <span className="font-bold">{budgetLimit}</span>
-                    </div>
-                    {targetDeficit > 0 && (
-                         <div className="flex items-center gap-2">
-                            <div className="w-1 h-1 rounded-full bg-white opacity-50"></div>
-                            <span className="opacity-80">目標赤字: </span>
-                            <span className="font-bold text-yellow-300">-{targetDeficit}</span>
-                        </div>
-                    )}
-                </div>
-             </div>
-
-             {/* Progress Visual */}
-             <div className="relative w-28 h-28 flex-shrink-0">
+          <div className="relative z-10 flex flex-col items-center justify-center py-2">
+             
+             {/* Circular Progress */}
+             <div className="relative w-48 h-48 sm:w-56 sm:h-56">
                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
                     {/* Background Track */}
-                    <circle cx="50" cy="50" r="42" stroke="rgba(255,255,255,0.15)" strokeWidth="8" fill="transparent" />
+                    <circle cx="50" cy="50" r="42" className={ringBgColor} strokeWidth="8" fill="transparent" />
                     {/* Progress Fill */}
                     <circle 
                         cx="50" cy="50" r="42" 
-                        className={`transition-all duration-1000 ${ringColor}`}
+                        className={`transition-all duration-1000 ${ringColor} drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]`}
                         strokeWidth="8" 
                         fill="transparent" 
                         strokeDasharray={264} 
-                        strokeDashoffset={264 - (264 * progressPercent) / 100} 
+                        strokeDashoffset={264 - (264 * visualPercent) / 100} 
                         strokeLinecap="round"
                     />
                  </svg>
-                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-xs opacity-60">已使用</span>
-                    <span className="text-xl font-bold">{Math.round(rawPercent)}%</span>
+                 
+                 {/* Center Content */}
+                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <p className="text-sm sm:text-base font-medium opacity-90 mb-1">剩餘</p>
+                    <h3 className="text-5xl sm:text-6xl font-black tracking-tighter drop-shadow-md">
+                        {remainingCalories}
+                    </h3>
+                    <p className="text-sm sm:text-base font-bold opacity-80 mt-1">千卡</p>
+                 </div>
+             </div>
+
+             {/* Status Message */}
+             <div className={`mt-6 px-4 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/10 flex items-center gap-2 ${statusColor} animate-fade-in-up`}>
+                {remainingCalories < 0 ? <AlertCircle className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+                <span className="font-bold text-sm">{statusMessage}</span>
+             </div>
+
+             {/* Bottom Stats Grid */}
+             <div className="grid grid-cols-3 gap-8 mt-6 w-full max-w-sm border-t border-white/10 pt-4">
+                 <div className="text-center">
+                    <p className="text-xs opacity-70 mb-1">攝取</p>
+                    <p className="font-bold text-lg">{todayFoodCalories}</p>
+                 </div>
+                 <div className="text-center">
+                    <p className="text-xs opacity-70 mb-1">消耗</p>
+                    <p className="font-bold text-lg text-teal-200">-{todayExerciseCalories}</p>
+                 </div>
+                 <div className="text-center">
+                    <p className="text-xs opacity-70 mb-1">目標</p>
+                    <p className="font-bold text-lg">{dailyBudget}</p>
                  </div>
              </div>
           </div>
-
-          {/* Feedback Message Banner */}
-          <div className={`mb-4 px-3 py-2 rounded-xl flex items-center gap-2 text-xs font-bold ${feedbackBg} backdrop-blur-md border border-white/10 transition-colors duration-300 relative z-10`}>
-              {feedbackIcon}
-              <span>{feedbackMessage}</span>
-          </div>
-
-          {/* Breakdown Stats Row */}
-          <div className="grid grid-cols-3 gap-2 bg-black/20 rounded-xl p-3 backdrop-blur-sm relative z-10">
-               <div className="text-center border-r border-white/10">
-                   <div className="flex items-center justify-center gap-1 text-xs opacity-70 mb-1">
-                       <Utensils className="w-3 h-3" /> 飲食
-                   </div>
-                   <p className="font-bold text-lg">{todayFoodCalories}</p>
-               </div>
-               <div className="text-center border-r border-white/10">
-                   <div className="flex items-center justify-center gap-1 text-xs opacity-70 mb-1">
-                       <Dumbbell className="w-3 h-3" /> 運動
-                   </div>
-                   <p className="font-bold text-lg text-green-300">-{todayExerciseCalories}</p>
-               </div>
-               <div className="text-center">
-                   <div className="flex items-center justify-center gap-1 text-xs opacity-70 mb-1">
-                       <Activity className="w-3 h-3" /> TDEE
-                   </div>
-                   <p className="font-bold text-lg opacity-80">{tdee}</p>
-               </div>
-          </div>
        </div>
 
-       {/* Quick Add Workout Section */}
-       <div className="bg-white p-4 rounded-2xl shadow-sm border border-orange-100 flex flex-col sm:flex-row gap-3 items-center">
-           <h3 className="font-bold text-orange-600 flex items-center gap-2 whitespace-nowrap text-sm">
-               <Zap className="w-4 h-4" /> 
-               手動記運動
-           </h3>
-           <div className="flex-1 w-full flex gap-2">
-               <input 
-                   list="exercises" 
-                   value={quickActivity}
-                   onChange={(e) => setQuickActivity(e.target.value)}
-                   placeholder="選擇或輸入項目..."
-                   className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-orange-200"
-               />
-               <datalist id="exercises">
-                   {COMMON_QUICK_EXERCISES.map(ex => <option key={ex} value={ex} />)}
-               </datalist>
-               <input 
-                   type="number"
-                   value={quickDuration}
-                   onChange={(e) => setQuickDuration(e.target.value)}
-                   placeholder="分鐘"
-                   className="w-20 text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-orange-200"
-               />
-               <button 
-                   onClick={handleQuickAdd}
-                   disabled={isCalculating}
-                   className="bg-orange-500 hover:bg-orange-600 text-white p-2 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center min-w-[40px]"
-               >
-                   {isCalculating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-               </button>
+       {/* Quick Add Workout Section - Changed to Select Dropdown */}
+       <div className="bg-white p-5 rounded-2xl shadow-sm border border-orange-100">
+           <div className="flex items-center gap-2 mb-3">
+               <div className="bg-orange-100 p-1.5 rounded-lg text-orange-600">
+                  <Zap className="w-4 h-4" />
+               </div>
+               <h3 className="font-bold text-gray-800 text-sm">手動記運動</h3>
+           </div>
+           
+           <div className="flex flex-col sm:flex-row gap-3 items-center">
+               <div className="relative w-full flex-1">
+                   <select 
+                       value={quickActivity}
+                       onChange={(e) => setQuickActivity(e.target.value)}
+                       className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-200 appearance-none font-medium text-gray-700"
+                   >
+                       <option value="" disabled>選擇運動項目...</option>
+                       {COMMON_QUICK_EXERCISES.map(ex => <option key={ex} value={ex}>{ex}</option>)}
+                   </select>
+                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+               </div>
+
+               <div className="flex w-full sm:w-auto gap-2">
+                   <input 
+                       type="number"
+                       value={quickDuration}
+                       onChange={(e) => setQuickDuration(e.target.value)}
+                       placeholder="分鐘"
+                       className="flex-1 sm:w-24 text-sm bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-200 text-center font-medium"
+                   />
+                   <button 
+                       onClick={handleQuickAdd}
+                       disabled={isCalculating}
+                       className="bg-orange-500 hover:bg-orange-600 text-white px-5 rounded-xl transition-colors flex-shrink-0 flex items-center justify-center font-bold shadow-sm active:scale-95 disabled:opacity-70"
+                   >
+                       {isCalculating ? <Loader2 className="w-5 h-5 animate-spin" /> : "記錄"}
+                   </button>
+               </div>
            </div>
        </div>
 
        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-           {/* Workout Card (Swapped to Left/Top) */}
+           {/* Workout Card */}
            <div 
              className={`p-5 rounded-3xl shadow-sm border hover:shadow-md transition-shadow cursor-pointer relative overflow-hidden group ${
                  isWorkoutDone ? 'bg-orange-500 border-orange-600' : 'bg-white border-orange-50'
@@ -420,7 +374,6 @@ const Dashboard: React.FC<Props> = ({
                     <h4 className={`font-bold ${isWorkoutDone ? 'text-white' : 'text-gray-800'}`}>今日運動計畫</h4>
                  </div>
                  
-                 {/* Quick Check Button */}
                  {todayWorkout && !isWorkoutDone && (
                      <button 
                         onClick={handleCheckPlan}
@@ -459,7 +412,7 @@ const Dashboard: React.FC<Props> = ({
               )}
            </div>
 
-           {/* Appointment Card (Swapped to Right/Bottom) */}
+           {/* Appointment Card */}
            <div 
              className={`bg-white rounded-3xl shadow-sm border border-indigo-50 transition-all cursor-pointer relative overflow-hidden group ${
                  isAptExpanded ? 'p-6 ring-2 ring-indigo-100' : 'p-5 hover:shadow-md'
